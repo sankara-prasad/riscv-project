@@ -58,6 +58,12 @@ module riscv_alu
   logic [31:0] operand_a_neg;
   logic [31:0] operand_a_neg_rev;
 
+  // signals required for the bit reverse operation
+  logic [2:0] brev_operation;
+
+  logic [31:0] operand_a_brev, operand_b_brev, operand_c_brev, operand_b_brev_neg, brev_result;
+  logic [4:0] bmask_b_brev;
+
   assign operand_a_neg = ~operand_a_i;
 
   // bit reverse operand_a for left shifts and bit counting
@@ -65,7 +71,14 @@ module riscv_alu
     genvar k;
     for(k = 0; k < 32; k++)
     begin
-      assign operand_a_rev[k] = operand_a_i[31-k];
+      always_comb begin
+        if(brev_operation == ALU_BREV_INS) begin
+           operand_a_rev[k] = operand_a_brev[31-k];                    
+        end
+        else begin
+           operand_a_rev[k] = operand_a_i[31-k];
+         end
+      end
     end
   endgenerate
 
@@ -80,7 +93,7 @@ module riscv_alu
 
   logic [31:0] operand_b_neg;
 
-  assign operand_b_neg = ~operand_b_i;
+  assign operand_b_neg = (operator_i == ALU_BREV) ? operand_b_brev_neg : ~operand_b_i;
 
 
   logic [5:0]  div_shift;
@@ -103,13 +116,13 @@ module riscv_alu
   logic [36:0] adder_result_expanded;
 
   assign adder_op_b_negate = (operator_i == ALU_SUB) || (operator_i == ALU_SUBR) ||
-                             (operator_i == ALU_SUBU) || (operator_i == ALU_SUBUR);
+                             (operator_i == ALU_SUBU) || (operator_i == ALU_SUBUR) || (brev_operation == ALU_BREV_SUB);
 
   // prepare operand a
-  assign adder_op_a = (operator_i == ALU_ABS) ? operand_a_neg : operand_a_i;
+  assign adder_op_a = (operator_i == ALU_ABS) ? operand_a_neg : (operator_i == ALU_BREV) ? operand_a_brev : operand_a_i;
 
   // prepare operand b
-  assign adder_op_b = adder_op_b_negate ? operand_b_neg : operand_b_i;
+  assign adder_op_b = adder_op_b_negate ? operand_b_neg : (operator_i == ALU_BREV) ? operand_b_brev : operand_b_i;
 
   // prepare carry
   always_comb
@@ -205,7 +218,7 @@ module riscv_alu
   logic [31:0] shift_left_result;
 
   // shifter is also used for preparing operand for division
-  assign shift_amt = div_valid ? div_shift : operand_b_i;
+  assign shift_amt = div_valid ? div_shift : ((brev_operation == ALU_BREV_EXT) || (brev_operation ==ALU_BREV_INS)) ? operand_b_brev : operand_b_i;
 
   // by reversing the bits of the input, we also have to reverse the order of shift amounts
   always_comb
@@ -236,12 +249,15 @@ module riscv_alu
   assign shift_left = (operator_i == ALU_SLL) || (operator_i == ALU_BINS) ||
                       (operator_i == ALU_FL1) || (operator_i == ALU_CLB) ||
                       (operator_i == ALU_DIV) || (operator_i == ALU_DIVU) ||
-                      (operator_i == ALU_REM) || (operator_i == ALU_REMU);
+                      (operator_i == ALU_REM) || (operator_i == ALU_REMU)
+                      || (brev_operation == ALU_BREV_INS);
 
   assign shift_use_round = (operator_i == ALU_ADD)   || (operator_i == ALU_SUB)   ||
                            (operator_i == ALU_ADDR)  || (operator_i == ALU_SUBR)  ||
                            (operator_i == ALU_ADDU)  || (operator_i == ALU_SUBU)  ||
-                           (operator_i == ALU_ADDUR) || (operator_i == ALU_SUBUR);
+                           (operator_i == ALU_ADDUR) || (operator_i == ALU_SUBUR)
+                           || (brev_operation == ALU_BREV_ADD) ||  (brev_operation == ALU_BREV_SUB);
+;
 
   assign shift_arithmetic = (operator_i == ALU_SRA)  || (operator_i == ALU_BEXT) ||
                             (operator_i == ALU_ADD)  || (operator_i == ALU_SUB)  ||
@@ -249,7 +265,7 @@ module riscv_alu
 
   // choose the bit reversed or the normal input for shift operand a
   assign shift_op_a    = shift_left ? operand_a_rev :
-                          (shift_use_round ? adder_round_result : operand_a_i);
+                          (shift_use_round ? adder_round_result : (brev_operation == ALU_BREV_EXT) ? operand_a_brev : operand_a_i);
   assign shift_amt_int = shift_use_round ? shift_amt_norm :
                           (shift_left ? shift_amt_left : shift_amt);
 
@@ -353,10 +369,20 @@ module riscv_alu
   generate
     for(i = 0; i < 4; i++)
     begin
-      assign is_equal_vec[i]   = (operand_a_i[8*i+7:8*i] == operand_b_i[8*i+7:i*8]);
-      assign is_greater_vec[i] = $signed({operand_a_i[8*i+7] & cmp_signed[i], operand_a_i[8*i+7:8*i]})
+        always_comb begin
+          if(brev_operation == ALU_BREV_GTU) begin
+            is_equal_vec[i]   = (operand_a_brev[8*i+7:8*i] == operand_b_brev[8*i+7:i*8]);
+            is_greater_vec[i] = $signed({operand_a_brev[8*i+7] & cmp_signed[i], operand_a_brev[8*i+7:8*i]})
+                                  >
+                                 $signed({operand_b_brev[8*i+7] & cmp_signed[i], operand_b_brev[8*i+7:i*8]});
+      end
+      else begin
+         is_equal_vec[i]   = (operand_a_i[8*i+7:8*i] == operand_b_i[8*i+7:i*8]);
+         is_greater_vec[i] = $signed({operand_a_i[8*i+7] & cmp_signed[i], operand_a_i[8*i+7:8*i]})
                                   >
                                  $signed({operand_b_i[8*i+7] & cmp_signed[i], operand_b_i[8*i+7:i*8]});
+      end
+    end
     end
   endgenerate
 
@@ -879,10 +905,10 @@ module riscv_alu
   // construct bit mask for insert/extract/bclr/bset
   // bmask looks like this 00..0011..1100..00
   assign bmask_first = {32'hFFFFFFFE} << bmask_a_i;
-  assign bmask       = (~bmask_first) << bmask_b_i;
+  assign bmask       = (~bmask_first) << ((operator_i == ALU_BREV) ? bmask_b_brev : bmask_b_i);
   assign bmask_inv   = ~bmask;
 
-  assign bextins_and = (operator_i == ALU_BINS) ? operand_c_i : {32{extract_sign}};
+  assign bextins_and = (operator_i == ALU_BINS) ? operand_c_i : (brev_operation == ALU_BREV_INS) ? operand_c_brev : {32{extract_sign}};
 
   assign extract_is_signed = (operator_i == ALU_BEXT);
   assign extract_sign = extract_is_signed & shift_result[bmask_a_i];
@@ -891,6 +917,156 @@ module riscv_alu
 
   assign bclr_result = operand_a_i & bmask_inv;
   assign bset_result = operand_a_i | bmask;
+
+  /////////////////////////////////////////////////////////////////////////////////
+  //  ____ _____ _______     _____  ________      ________ _____   _____ ______  //
+  // |  _ \_   _|__   __|   |  __ \|  ____\ \    / /  ____|  __ \ / ____|  ____| //
+  // | |_) || |    | |______| |__) | |__   \ \  / /| |__  | |__) | (___ | |__    //
+  // |  _ < | |    | |______|  _  /|  __|   \ \/ / |  __| |  _  / \___ \|  __|   //
+  // | |_) || |_   | |      | | \ \| |____   \  /  | |____| | \ \ ____) | |____  //
+  // |____/_____|  |_|      |_|  \_\______|   \/   |______|_|  \_\_____/|______| //
+  //                                                                             //
+  /////////////////////////////////////////////////////////////////////////////////                                                                           
+                                                                            
+  //define the states of the fsm
+  typedef enum logic [3:0] {IDLE,SUB,EXTRACT_1,EXTRACT_2,INSERT_1,INSERT_2,ADD,COMPARE,TERMINATE} State;
+  State currentState, nextState;
+
+  //input register
+  logic [31:0] nReg_DP, nReg_DN;
+
+  //index position register
+  logic [31:0] idxn_DP, idxn_DN, idxp_DP, idxp_DN;
+
+  //insert, extract register
+  logic [31:0] insextReg1_DP, insextReg1_DN, insextReg2_DP, insextReg2_DN;
+
+  //brev ready signal and bvre operation
+  logic brev_ready;
+   
+  assign operand_b_brev_neg = ~operand_b_brev;
+  assign brev_result = nReg_DP;
+
+  always_comb begin : proc_
+
+    //set default value of signal
+    brev_operation    = {3{1'b0}};
+    operand_a_brev    = {32{1'b0}};
+    operand_b_brev    = {32{1'b0}};
+    operand_c_brev    = {32{1'b0}};
+    bmask_b_brev      = {5{1'b0}};
+    nextState         = currentState;
+    nReg_DN           = nReg_DP;
+    idxn_DN           = idxn_DP;
+    idxp_DN           = idxp_DP;
+    insextReg1_DN     = insextReg1_DP;
+    insextReg2_DN     = insextReg2_DP;
+    brev_ready        = 1'b0;
+
+    case (currentState)
+      IDLE : begin
+        brev_ready    = 1'b1;
+        if(operator_i == ALU_BREV) begin
+          nextState     = SUB;
+          nReg_DN       = operand_a_i;
+          idxn_DN       = operand_b_i;
+          idxp_DN       = 0;
+          brev_ready    = 1'b0;
+        end
+      end
+
+      SUB : begin
+        brev_operation  = ALU_BREV_SUB;
+        operand_a_brev  = idxn_DP;
+        operand_b_brev  = bmask_a_i + 1;
+        idxn_DN         = adder_result;
+        nextState       = EXTRACT_1;
+      end
+
+
+      EXTRACT_1 : begin
+        brev_operation  = ALU_BREV_EXT;
+        operand_a_brev  = nReg_DP;
+        operand_b_brev  = idxp_DP;
+        insextReg1_DN   = bextins_result;
+        nextState       = EXTRACT_2;
+      end
+
+      EXTRACT_2 : begin
+        brev_operation  = ALU_BREV_EXT;
+        operand_a_brev  = nReg_DP;
+        operand_b_brev  = idxn_DP;
+        insextReg2_DN   = bextins_result;
+        nextState       = INSERT_1;
+      end
+
+      INSERT_1 : begin
+        brev_operation  = ALU_BREV_INS;
+        operand_a_brev  = insextReg2_DP;
+        operand_b_brev  = idxp_DP;
+        bmask_b_brev    = idxp_DP;
+        operand_c_brev  = nReg_DP;
+        nReg_DN         = bextins_result;
+        nextState       = INSERT_2;
+      end
+
+      INSERT_2 : begin
+        brev_operation  = ALU_BREV_INS;
+        operand_a_brev  = insextReg1_DP;
+        operand_b_brev  = idxn_DP;
+        bmask_b_brev    = idxn_DP;
+        operand_c_brev  = nReg_DP;
+        nReg_DN         = bextins_result;
+        nextState       = ADD;
+      end
+
+      ADD : begin
+        brev_operation  = ALU_BREV_ADD;
+        operand_a_brev  = idxp_DP;
+        operand_b_brev  = bmask_a_i + 1;
+        idxp_DN         = adder_result;
+        nextState       = COMPARE;
+      end
+
+      COMPARE : begin
+        brev_operation  = ALU_BREV_GTU;
+        operand_a_brev = idxn_DP;
+        operand_b_brev = idxp_DP;
+        if(is_greater) begin
+          nextState = SUB;
+        end
+        else begin
+          nextState = TERMINATE;
+        end
+      end
+
+      TERMINATE : begin
+        brev_ready  = 1'b1;
+        nextState      = IDLE;
+      end
+    endcase
+
+  end
+
+  // Synchronous State-Transition
+  always_ff @(posedge clk) begin : proc_curr
+    if(~rst_n) begin
+      currentState  <= IDLE;
+      nReg_DP       <= {32{1'b0}};
+      idxn_DP       <= {5{1'b0}};
+      idxp_DP       <= {5{1'b0}};
+      insextReg1_DP <= {32{1'b0}};
+      insextReg2_DP <= {32{1'b0}};
+    end else if(enable_i && (operator_i == ALU_BREV)) begin
+      currentState  <= nextState;
+      nReg_DP       <= nReg_DN;
+      idxn_DP       <= idxn_DN;
+      idxp_DP       <= idxp_DN;
+      insextReg1_DP <= insextReg1_DN;
+      insextReg2_DP <= insextReg2_DN;
+    end
+  end // proc_curr
+
 
   ////////////////////////////////////////////////////
   //  ____ _____     __     __  ____  _____ __  __  //
@@ -983,6 +1159,7 @@ module riscv_alu
       ALU_BINS,
       ALU_BEXT,
       ALU_BEXTU: result_o = bextins_result;
+      ALU_BREV: result_o = brev_result;
 
       ALU_BCLR:  result_o = bclr_result;
       ALU_BSET:  result_o = bset_result;
@@ -1035,7 +1212,7 @@ module riscv_alu
     endcase
   end
 
-  assign ready_o = div_ready;
+  assign ready_o = (operator_i == ALU_BREV) ? brev_ready : div_ready;
 
 endmodule
 

@@ -186,6 +186,13 @@ parameter VEC_MODE32 = 2'b00;
 parameter VEC_MODE16 = 2'b10;
 parameter VEC_MODE8  = 2'b11;
 
+// Bit reverse states
+parameter ALU_BREV_ADD = 3'b001;
+parameter ALU_BREV_SUB = 3'b010;
+parameter ALU_BREV_EXT = 3'b011;
+parameter ALU_BREV_INS = 3'b100;
+parameter ALU_BREV_GTU = 3'b101;
+
 /////////////////////////////////////////////////////////
 //    ____ ____    ____            _     _             //
 //   / ___/ ___|  |  _ \ ___  __ _(_)___| |_ ___ _ __  //
