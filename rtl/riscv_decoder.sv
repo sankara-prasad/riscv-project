@@ -120,7 +120,7 @@ module riscv_decoder
   output logic        data_we_o,               // data memory write enable
   output logic        prepost_useincr_o,       // when not active bypass the alu result for address calculation
   output logic [1:0]  data_type_o,             // data type on data memory: byte, half word or word
-  output logic        data_sign_extension_o,   // sign extension on read data from data memory
+  output logic [1:0]  data_sign_extension_o,   // sign extension on read data from data memory / NaN boxing
   output logic [1:0]  data_reg_offset_o,       // offset in byte inside register for stores
   output logic        data_load_event_o,       // data request is in the special event range
 
@@ -225,7 +225,7 @@ module riscv_decoder
 
     data_we_o                   = 1'b0;
     data_type_o                 = 2'b00;
-    data_sign_extension_o       = 1'b0;
+    data_sign_extension_o       = 2'b00;
     data_reg_offset_o           = 2'b00;
     data_req                    = 1'b0;
     data_load_event_o           = 1'b0;
@@ -1085,6 +1085,8 @@ module riscv_decoder
                    alu_operator_o      = ALU_ADD;
                    alu_op_b_mux_sel_o  = OP_B_IMM;
                    imm_b_mux_sel_o     = IMMB_I;
+                   // NaN boxing
+                   data_sign_extension_o = 2'b10;
                 end
               default:  illegal_insn_o = 1'b1;
             endcase

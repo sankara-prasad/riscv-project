@@ -187,7 +187,7 @@ module riscv_id_stage
     output logic        data_req_ex_o,
     output logic        data_we_ex_o,
     output logic [1:0]  data_type_ex_o,
-    output logic        data_sign_ext_ex_o,
+    output logic [1:0]  data_sign_ext_ex_o,
     output logic [1:0]  data_reg_offset_ex_o,
     output logic        data_load_event_ex_o,
 
@@ -371,7 +371,7 @@ module riscv_id_stage
   // Data Memory Control
   logic        data_we_id;
   logic [1:0]  data_type_id;
-  logic        data_sign_ext_id;
+  logic [1:0]  data_sign_ext_id;
   logic [1:0]  data_reg_offset_id;
   logic        data_req_id;
   logic        data_load_event_id;
@@ -1380,7 +1380,7 @@ module riscv_id_stage
 
       data_we_ex_o                <= 1'b0;
       data_type_ex_o              <= 2'b0;
-      data_sign_ext_ex_o          <= 1'b0;
+      data_sign_ext_ex_o          <= 2'b0;
       data_reg_offset_ex_o        <= 2'b0;
       data_req_ex_o               <= 1'b0;
       data_load_event_ex_o        <= 1'b0;
