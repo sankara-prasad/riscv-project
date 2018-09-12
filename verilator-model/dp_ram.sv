@@ -28,7 +28,7 @@ module dp_ram
     input  logic [31:0]            wdata_b_i,
     output logic [31:0]            rdata_b_o,
     input  logic                   we_b_i,
-    input  logic [3:0]             be_b_i
+    input  logic [3:0]             be_b_i // yello//
   );
 
   localparam bytes = 2**ADDR_WIDTH;
