@@ -35,7 +35,7 @@ module register_file_test_wrap
 #(
    parameter ADDR_WIDTH    = 5,
    parameter DATA_WIDTH    = 32,
-   parameter FPU           = 0
+   parameter FPU           = 0   // To Enable Floating Point
 )
 (
    // Clock and Reset
@@ -68,7 +68,7 @@ module register_file_test_wrap
    input  logic                    we_b_i,
 
    // BIST ENABLE
-   input  logic                    BIST,
+   input  logic                    BIST,  //Self Test
    //BIST ports
    input  logic                    CSN_T,
    input  logic                    WEN_T,
@@ -77,7 +77,7 @@ module register_file_test_wrap
    output logic [DATA_WIDTH-1:0]   Q_T
 );
 
-
+// the muxed variables declared below are to chose between the test variables or the real variables
    logic [ADDR_WIDTH-1:0]        ReadAddr_a_muxed;
 
    logic                         WriteEnable_a_muxed;
